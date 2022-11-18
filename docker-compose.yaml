@@ -1,0 +1,20 @@
+version: "3"
+services:
+  embyacbot: 
+    image: acemby/embyacbot:latest
+    container_name: embyacbot
+    environment:
+      # emby 
+      - EMBY_URL=
+      - EMBY_API_TOKEN=
+
+      # telegram
+      - TG_BOT_API_TOKEN=
+      - TG_GROUP_CHAT_ID=  #官方群组的名称，例如：t.me/groupname 对应 @groupname
+
+      # database
+      - DB_HOST=mariadb
+      - DB_USER=root
+      - DB_PASS=
+      - DB_NAME=embyacbot
+    restart: unless-stopped
