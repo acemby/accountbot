@@ -11,7 +11,7 @@ LABEL maintainer="acemby"
 # install dependencies
 COPY /root /
 COPY /src/* /app/
-
+ENV PYTHONUNBUFFERED=true
 RUN \
   apk add --update --no-cache curl git py3-pip libc6-compat gcompat  && \
   pip3 install -r /app/requirements.txt

@@ -6,7 +6,10 @@ from telegram import Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 
 api = os.environ["EMBY_API_TOKEN"].strip()
-url = os.environ["EMBY_URL"].strip()
+url_external = os.environ["EMBY_URL_EXTERNAL"]
+url_internal = os.environ.get("EMBY_URL_INTERNAL", url_external)
+if url_internal.endswith("\\"):
+    url_internal = url_internal[:-1]
 bot_api = os.environ["TG_BOT_API_TOKEN"].strip()
 group_chat_id = os.environ["TG_GROUP_CHAT_ID"].strip()
 
@@ -24,14 +27,22 @@ db = connect.cursor()
 db.execute("CREATE TABLE if not exists user (chatid VARCHAR(255), emby_userid VARCHAR(255))")
 
 def start(update: Update, context: CallbackContext):
-    update.message.reply_text('请输入：/create + 用户名 来注册\n\n例如通过发送"/create helloworld"来注册一个用户名为helloworld的账号')
+    update.message.reply_text('请输入：/create + 用户名 来注册\n\n'
+                              '例如通过发送"/create helloworld"来注册一个用户名为helloworld的账号')
 
 def help_command(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
-    update.message.reply_text('chatid:' + str(chat_id) + '\n\n创建账号：/create + 用户名\ne.g：/create helloworld\n\n重置密码：/reset\n需要先绑定账号\n\n绑定账号：/bind + 用户名 + 密码\ne.g：/bind helloworld 123456\n\n查询账号信息：/info')
+    update.message.reply_text(f'chatid: {chat_id}\n\n'
+                                '创建账号：/create + 用户名\n'
+                                'e.g：/create helloworld\n\n'
+                                '重置密码：/reset\n需要先绑定账号\n\n'
+                                '绑定账号：/bind + 用户名 + 密码\n'
+                                'e.g：/bind helloworld 123456\n\n'
+                                '查询账号信息：/info')
 
 def info(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
+    db.connection.ping()
     check = judge(chat_id)
     if(check == 1):
         check1 = judgebind(chat_id)
@@ -53,9 +64,12 @@ def info(update: Update, context: CallbackContext) -> None:
             params = {
                 'api_key': api,
             }
-            response = requests.get(url + '/emby/Users/' + userid, params=params, headers=headers)
-            print(response)
-            responsejson = response.json()
+            response = requests.get(url_internal + '/emby/Users/' + userid, params=params, headers=headers)
+            try:
+                responsejson = response.json()
+            except:
+                update.message.reply_text(f"出现问题: {str(response)}, 请联系管理员")
+        
             name = responsejson['Name']
             createdate = responsejson['DateCreated']
             lastlogin = responsejson.get('LastLoginDate', '从未')
@@ -67,6 +81,7 @@ def info(update: Update, context: CallbackContext) -> None:
     
 
 def create(update: Update, context: CallbackContext) -> None:
+    db.connection.ping()
     text = update.message.text
     names = text.split(' ')
     name = names[1]
@@ -88,7 +103,7 @@ def create(update: Update, context: CallbackContext) -> None:
 
             data = '{"Name":"'+name+'","HasPassword":true}'
 
-            response = requests.post(url + '/emby/Users/New', headers=headers, params=params, data=data)
+            response = requests.post(url_internal + '/emby/Users/New', headers=headers, params=params, data=data)
 
             status1 = response.status_code
             if(response != '' and status1 == 200):
@@ -107,17 +122,16 @@ def create(update: Update, context: CallbackContext) -> None:
 
                 data1 = '{"IsAdministrator":false,"IsHidden":true,"IsHiddenRemotely":true,"IsDisabled":false,"EnableRemoteControlOfOtherUsers":false,"EnableSharedDeviceControl":false,"EnableRemoteAccess":true,"EnableLiveTvManagement":false,"EnableLiveTvAccess":true,"EnableMediaPlayback":true,"EnableAudioPlaybackTranscoding":false,"EnableVideoPlaybackTranscoding":false,"EnablePlaybackRemuxing":false,"EnableContentDeletion":false,"EnableContentDownloading":false,"EnableSubtitleDownloading":false,"EnableSubtitleManagement":false,"EnableSyncTranscoding":false,"EnableMediaConversion":false,"EnableAllDevices":true,"SimultaneousStreamLimit":3}'
 
-                requests.post(url + '/emby/Users/'+id+'/Policy', headers=headers1, params=params1, data=data1)
+                requests.post(url_internal + '/emby/Users/'+id+'/Policy', headers=headers1, params=params1, data=data1)
 
                 try: 
                     sql = "insert into user (chatid,emby_userid) values ("+str(chat_id)+","+'"'+str(id)+'"'+")"
-                    print(sql)
                     db.execute(sql)
                     connect.commit()
                 except Exception as e:
                     update.message.reply_text("失败:", e)
                 else:
-                    update.message.reply_text(f'注册用户名：{name} \n无初始密码，请尽快登录，点击右上角设置图标设置密码！\n公益服直连网址：{url} \n更多线路进群获取！\n\n资源盘还在修复中，部分资源会显示不全！\n更新通知频道： {group_chat_id}\n聊天吹水群： {group_chat_id}t\n\n推荐使用客户端播放，下载地址：http://download.misakaf.xyz/')
+                    update.message.reply_text(f'注册用户名：{name} \n无初始密码，请尽快登录，点击右上角设置图标设置密码！\n公益服直连网址：{url_external} \n更多线路进群获取！\n\n更新通知频道： {group_chat_id}\n聊天吹水群： {group_chat_id}\n\n推荐使用客户端播放，下载地址：http://t.me/EmbyNoisyX')
             elif(status1 == 400):
                 update.message.reply_text(response.text)
             else:
@@ -128,6 +142,7 @@ def create(update: Update, context: CallbackContext) -> None:
 
 def reset(update: Update, context: CallbackContext) -> None:
     chat_id = update.message.chat_id
+    db.connection.ping()
     check = judge(chat_id)
     if(check == 0):
         update.message.reply_text('你还未注册过Emby公益服，请先注册！')
@@ -144,6 +159,7 @@ def reset(update: Update, context: CallbackContext) -> None:
 
 
 def bind(update: Update, context: CallbackContext) -> None:
+    db.connection.ping()
     text = update.message.text
     chatid = update.message.chat_id
     check = judgebind(chatid)
@@ -181,12 +197,13 @@ def nametoid(name):
         'api_key': api,
     }
 
-    response = requests.get(url + '/emby/Users/Query', params=params, headers=headers)
+    response = requests.get(url_internal + '/emby/Users/Query', params=params, headers=headers)
     responsejson = response.json()
     id = responsejson['Items'][0]['Id']
     return id
 
 def idtoname(chatid):
+    db.connection.ping()
     try:
         create_sqli = "SELECT * FROM user WHERE chatid = "+ str(chatid)
         db.execute(create_sqli)
@@ -202,7 +219,7 @@ def idtoname(chatid):
     params = {
         'api_key': api,
     }
-    response = requests.get(url + '/emby/Users/' + userid, params=params, headers=headers)
+    response = requests.get(url_internal + '/emby/Users/' + userid, params=params, headers=headers)
     responsejson = response.json()
     name = responsejson['Name']
     return name
@@ -224,6 +241,7 @@ def judge(chat_id):
     return kk
 
 def judgebind(chat_id):
+    db.connection.ping()
     kk = 1
     try:
         create_sqli = "SELECT * FROM user WHERE chatid ="+str(chat_id)
@@ -238,8 +256,6 @@ def judgebind(chat_id):
 
 #检测是否在群组中
 def check_user_in_the_group(update: Update, context: CallbackContext):
-
-     
     user_id = update.message.chat_id 
     check = context.bot.getChatMember(group_chat_id,user_id) 
     if check.status in ['administrator', 'creator', 'member']: 
@@ -264,7 +280,7 @@ def verify(username,password):
         
     }
 
-    response = requests.post(url + '/emby/Users/AuthenticateByName', headers=headers, json=json_data,params=params)
+    response = requests.post(url_internal + '/emby/Users/AuthenticateByName', headers=headers, json=json_data,params=params)
 
     if(response.status_code == 200):
         return 1
@@ -273,6 +289,7 @@ def verify(username,password):
 
 def passwd(chatid):
     check = 0
+    db.connection.ping()    
     try:
         create_sqli = "SELECT * FROM user WHERE chatid = "+ str(chatid)
         db.execute(create_sqli)
@@ -293,7 +310,7 @@ def passwd(chatid):
         'ResetPassword': True,
     }
 
-    response = requests.post(url + '/emby/Users/'+userid+'/Password', params=params, headers=headers, json=json_data)
+    response = requests.post(url_internal + '/emby/Users/'+userid+'/Password', params=params, headers=headers, json=json_data)
     status2 = response.status_code
     if(status2 == 204):
         check = 1
@@ -302,7 +319,6 @@ def passwd(chatid):
 
 
 def main() -> None:
-    print(bot_api)
     updater = Updater(bot_api)
     
     dispatcher = updater.dispatcher

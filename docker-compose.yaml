@@ -5,7 +5,8 @@ services:
     container_name: embyacbot
     environment:
       # emby 
-      - EMBY_URL=
+      - EMBY_URL_INTERNAL=
+      - EMBY_URL_EXTERNAL=
       - EMBY_API_TOKEN=
 
       # telegram
